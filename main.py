@@ -2,11 +2,10 @@
 import os, sys
 import json
 import hmac, base64, struct, hashlib, time
-from threading import Timer
 
 import gi
 gi.require_version('Gtk', '3.0')
-from gi.repository import Gtk
+from gi.repository import Gtk, GObject
 
 
 def fullpath( relpath ):
@@ -38,7 +37,8 @@ class OTPWindow(Gtk.Window):
 		Gtk.Window.__init__(self, title="Py2FA")
 
 		self.set_default_size(200, 300)
-		self.threadlocked = False # Progress bar semaphore
+		self.progressbar_fraction = 1
+		self.progressbar_reset = False # Progress bar semaphore
 
 		box_outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
 		self.add(box_outer)
@@ -57,13 +57,13 @@ class OTPWindow(Gtk.Window):
 		self.accounts = {}
 
 		runat = int(time.time()+30)//30*30
-		self.update_timer = Timer(runat - time.time(), self.update_otps)
-		self.update_timer.start()
+		GObject.timeout_add(1000 * (runat - time.time()), self.update_otps, None)
 
-		self.progress_timer = Timer(1, self.update_progress)
-		self.progress_timer.start()
+		runat = int(time.time() + 1) + 0.5
+		GObject.timeout_add(1000 * (runat - time.time()), self.update_progress, None)
 
-		self.progressbar.set_fraction(1 - (int(time.time())%30)/30.0)
+		self.progressbar_fraction -= (int(time.time())%30)/30.0
+		self.progressbar.set_fraction(self.progressbar_fraction)
 
 
 	def add_account_dialog( self, button ):
@@ -73,6 +73,7 @@ class OTPWindow(Gtk.Window):
 			secret = secret_entry.get_text()
 			try:
 				self.add_account( name, secret )
+				self.save()  # Save this new entry
 				dialog.destroy()
 			except TypeError:
 				self.add_message.set_markup('<span color="red">Invalid Secret</span>')
@@ -117,13 +118,14 @@ class OTPWindow(Gtk.Window):
 			Add a new account and update the UI
 		"""
 
-		self.accounts[name] = secret
-		otp_code = get_totp_token(secret)
+		if name not in self.accounts:
+			self.accounts[name] = secret
+		otp_code = str(get_totp_token(secret)).zfill(6)
 
 		vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
 
 		label1 = Gtk.Label(xalign=0)
-		label1.set_markup("<big>" + str(otp_code).zfill(6) + "</big>")
+		label1.set_markup("<big>" + otp_code[:3] + " " + otp_code[3:] + "</big>")
 		label2 = Gtk.Label(name, xalign=0)
 		vbox.pack_start(label1, True, True, 0)
 		vbox.pack_start(label2, True, True, 0)
@@ -131,45 +133,39 @@ class OTPWindow(Gtk.Window):
 		self.listbox.add(vbox)
 		vbox.show_all()
 
-		self.save()
 
-
-	def update_otps( self ):
-		while True:
-			listrow = self.listbox.get_row_at_index(0)
-			if listrow is not None:
-				self.listbox.remove(listrow)
-			else:
-				break
-		self.load()
+	def update_otps( self, user_data ):
+		for child in self.listbox.get_children():
+			child.destroy()
+		self.load(accountsList=self.accounts)
 
 		runat = int(time.time()+30)//30*30
-		self.update_timer = Timer(runat - time.time(), self.update_otps)
-		self.update_timer.start()
+		GObject.timeout_add(1000 * (runat - time.time()), self.update_otps, None)
 
-		while self.threadlocked:
-			pass
-		self.threadlocked = True
-		self.progressbar.set_fraction(1)
-		self.threadlocked = False
+		self.progressbar_reset = True
+
+		return False  # Don't auto-continue
 
 
-	def update_progress( self ):
-		while self.threadlocked:
-			pass
-		self.threadlocked = True
-		self.progressbar.set_fraction(self.progressbar.get_fraction() - 0.0333)
-		self.threadlocked = False
-		self.progress_timer = Timer(1, self.update_progress)
-		self.progress_timer.start()
+	def update_progress( self, user_data ):
+		if self.progressbar_reset == True:
+			self.progressbar_fraction = 1
+			self.progressbar.set_fraction(self.progressbar_fraction)
+			self.progressbar_reset = False
+		else:
+			self.progressbar_fraction -= 0.0333
+			self.progressbar.set_fraction(self.progressbar_fraction)
 
+		runat = int(time.time() + 1) + 0.5
+		GObject.timeout_add(1000 * (runat - time.time()), self.update_progress, None)
+
+		return False  # Don't auto-continue
 
 	def save( self ):
 
 		"""
 			Save any data to a file (the links/etc)
 		"""
-
 		width,height = self.get_size()
 		saveJsonText = json.dumps( {
 			'accounts': self.accounts,
@@ -181,39 +177,39 @@ class OTPWindow(Gtk.Window):
 			f.write( saveJsonText )
 
 
-	def load( self ):
+	def load( self, accountsList=None ):
 
 		"""
 			Load any saved data
 		"""
 
-		try:
-			file = open( fullpath( 'py2fa.json' ), 'rb' )
-		except IOError:
-			return
+		if accountsList is None:
+			try:
+				file = open( fullpath( 'py2fa.json' ), 'rb' )
+			except IOError:
+				return
 
-		data = json.loads( file.read() )
-		accountsList = data['accounts']
+			data = json.loads( file.read() )
+			accountsList = data['accounts']
 
-		try:
-			resWidth = data['resWidth']
-			resHeight = data['resHeight']
-		except KeyError:
-			resWidth = 200
-			resHeight = 300
+			try:
+				resWidth = data['resWidth']
+				resHeight = data['resHeight']
+			except KeyError:
+				resWidth = 200
+				resHeight = 300
 
-		file.close()
+			file.close()
 
-		self.resize( resWidth, resHeight )
+			self.resize( resWidth, resHeight )
 
 		for name, secret in accountsList.iteritems():
 			self.add_account( name, secret )
 
 
 	def main_quit( self, event, user_data ):
-		self.update_timer.cancel()
-		self.progress_timer.cancel()
-		Gtk.main_quit()
+		self.save()     # Save everything
+		Gtk.main_quit() # Quit
 
 
 win = OTPWindow()
