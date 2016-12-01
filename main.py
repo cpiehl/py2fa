@@ -73,11 +73,10 @@ class OTPWindow(Gtk.Window):
 		def on_ok_clicked( widget, name_entry, secret_entry ):
 			name = name_entry.get_text()
 			secret = secret_entry.get_text().replace(" ", "")
-			try:
-				self.add_account( name, secret )
+			if self.add_account( name, secret ) == True:
 				self.save()  # Save this new entry
 				dialog.destroy()
-			except TypeError:
+			else:
 				self.add_message.set_markup('<span color="red">Invalid Secret</span>')
 
 
@@ -120,20 +119,26 @@ class OTPWindow(Gtk.Window):
 			Add a new account and update the UI
 		"""
 
-		if name not in self.accounts:
-			self.accounts[name] = secret
-		otp_code = str(get_totp_token(secret)).zfill(6)
+		try:
+			otp_code = str(get_totp_token(secret)).zfill(6)
+		except TypeError:
+			return False
+		else:
+			if name not in self.accounts:
+				self.accounts[name] = secret
 
-		vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+			vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
 
-		label1 = Gtk.Label(xalign=0)
-		label1.set_markup("<big>" + otp_code[:3] + " " + otp_code[3:] + "</big>")
-		label2 = Gtk.Label(name, xalign=0)
-		vbox.pack_start(label1, True, True, 0)
-		vbox.pack_start(label2, True, True, 0)
+			label1 = Gtk.Label(xalign=0)
+			label1.set_markup("<big>" + otp_code[:3] + " " + otp_code[3:] + "</big>")
+			label2 = Gtk.Label(name, xalign=0)
+			vbox.pack_start(label1, True, True, 0)
+			vbox.pack_start(label2, True, True, 0)
 
-		self.listbox.add(vbox)
-		vbox.show_all()
+			self.listbox.add(vbox)
+			vbox.show_all()
+
+			return True
 
 
 	def update_otps( self, user_data ):
