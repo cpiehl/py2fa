@@ -4,7 +4,7 @@ Py2FA
 
 A front-end program for Two-Factor Authentication written in Python and GTK.
 
-![screenshot](https://i.imgur.com/Re6RfuM.png
+![screenshot](https://i.imgur.com/Re6RfuM.png)
 
 Dependencies
 ============
