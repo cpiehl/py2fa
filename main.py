@@ -28,6 +28,8 @@ def get_totp_token(secret):
 	"""
 		Timer-based OTP
 	"""
+	secret = secret.replace(" ", "")
+	secret += '=' * (-len(secret) % 8)  # Add correct '=' padding
 	return get_hotp_token(secret, intervals_no=int(time.time())//30)
 
 
@@ -70,7 +72,7 @@ class OTPWindow(Gtk.Window):
 
 		def on_ok_clicked( widget, name_entry, secret_entry ):
 			name = name_entry.get_text()
-			secret = secret_entry.get_text()
+			secret = secret_entry.get_text().replace(" ", "")
 			try:
 				self.add_account( name, secret )
 				self.save()  # Save this new entry
