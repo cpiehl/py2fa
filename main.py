@@ -5,7 +5,15 @@ import hmac, base64, struct, hashlib, time
 
 import gi
 gi.require_version('Gtk', '3.0')
-from gi.repository import Gtk, GObject
+from gi.repository import Gtk, Gdk, GObject
+
+UI_INFO = """
+<ui>
+  <popup name='ContextMenu'>
+    <menuitem action='ContextRemove' />
+  </popup>
+</ui>
+"""
 
 
 def fullpath( relpath ):
@@ -42,6 +50,27 @@ class OTPWindow(Gtk.Window):
 		self.progressbar_fraction = 1
 		self.progressbar_reset = False # Progress bar semaphore
 
+		# Right click remove -> confirm menu
+		self.popup = Gtk.Menu()
+		menuitem_edit = Gtk.MenuItem("Edit")
+		self.popup.append(menuitem_edit)
+		self.popup.append(Gtk.SeparatorMenuItem())
+		menuitem_remove = Gtk.MenuItem("Remove")
+		self.popup.append(menuitem_remove)
+		submenu = Gtk.Menu()
+		menuitem_confirm = Gtk.MenuItem("Confirm")
+		submenu.append(menuitem_confirm)
+		menuitem_remove.set_submenu(submenu)
+		self.popup.connect("deactivate", self.popup_deactivate)
+		menuitem_confirm.connect("button-release-event", self.remove_account)
+		menuitem_edit.connect("button-release-event", self.edit_account_dialog)
+		self.popup.show_all()
+
+		# I don't know how to retrieve this from the MenuItem callback,
+		# so save it in this "global" string in show_context_menu() to be
+		# used in remove_account()
+		self.selected_account_name = None
+
 		box_outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
 		self.add(box_outer)
 
@@ -68,12 +97,30 @@ class OTPWindow(Gtk.Window):
 		self.progressbar.set_fraction(self.progressbar_fraction)
 
 
+	def popup_deactivate( self, widget ):
+		""" Helper to null this variable when the popup is closed """
+		self.selected_account_name = None
+
+
+	def show_context_menu( self, widget, event ):
+		"""
+			Right click menu for edit/remove
+		"""
+		if event.button == 3: # right click
+			# hopefully always the clicked entry's name
+			self.selected_account_name = widget.get_children()[0].get_children()[1].get_text()
+			self.popup.popup(None, None, None, None, event.button, event.time)
+			return True # event has been handled
+
+
 	def add_account_dialog( self, button ):
 
 		def on_ok_clicked( widget, name_entry, secret_entry ):
 			name = name_entry.get_text()
 			secret = secret_entry.get_text().replace(" ", "")
-			if self.add_account( name, secret ) == True:
+			if name in self.accounts:
+				self.add_message.set_markup('<span color="red">Unique Name Required</span>')
+			elif self.add_account( name, secret ) == True:
 				self.save()  # Save this new entry
 				dialog.destroy()
 			else:
@@ -114,11 +161,60 @@ class OTPWindow(Gtk.Window):
 		dialog.show_all()
 
 
+	def edit_account_dialog( self, widget, event ):
+
+		def on_ok_clicked( widget, name_entry, secret_entry ):
+			name = name_entry.get_text()
+			secret = secret_entry.get_text().replace(" ", "")
+			if name != self.selected_account_name and name in self.accounts:
+				self.add_message.set_markup('<span color="red">Unique Name Required</span>')
+			elif self.edit_account( name, secret ) == True:
+				self.save()  # Save this new entry
+				dialog.destroy()
+				self.selected_account_name = None
+			else:
+				self.add_message.set_markup('<span color="red">Invalid Secret</span>')
+
+
+		def on_cancel_clicked( widget ):
+			dialog.destroy()
+			self.selected_account_name = None
+
+
+		dialog = Gtk.Window(title="Edit Account")
+
+		vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+		dialog.add(vbox)
+
+		name_entry = Gtk.Entry()
+		name_entry.set_text(self.selected_account_name)
+		vbox.pack_start(name_entry, True, True, 0)
+
+		secret_entry = Gtk.Entry()
+		secret_entry.set_text(self.accounts[self.selected_account_name])
+		vbox.pack_start(secret_entry, True, True, 0)
+
+		self.add_message = Gtk.Label(xalign=0)
+		vbox.pack_start(self.add_message, True, True, 0)
+
+		hbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+		vbox.pack_start(hbox, False, False, 0)
+
+		button_ok = Gtk.Button("Save")
+		button_ok.connect("clicked", on_ok_clicked, name_entry, secret_entry)
+		hbox.pack_start(button_ok, True, True, 0)
+
+		button_cancel = Gtk.Button("Cancel")
+		button_cancel.connect("clicked", on_cancel_clicked)
+		hbox.pack_start(button_cancel, True, True, 0)
+
+		dialog.show_all()
+
+
 	def add_account( self, name, secret ):
 		"""
 			Add a new account and update the UI
 		"""
-
 		try:
 			otp_code = str(get_totp_token(secret)).zfill(6)
 		except TypeError:
@@ -127,6 +223,7 @@ class OTPWindow(Gtk.Window):
 			if name not in self.accounts:
 				self.accounts[name] = secret
 
+			ebox = Gtk.EventBox()
 			vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
 
 			label1 = Gtk.Label(xalign=0)
@@ -135,13 +232,47 @@ class OTPWindow(Gtk.Window):
 			vbox.pack_start(label1, True, True, 0)
 			vbox.pack_start(label2, True, True, 0)
 
-			self.listbox.add(vbox)
-			vbox.show_all()
+			ebox.connect("button-release-event", self.show_context_menu)
+
+			ebox.add(vbox)
+			self.listbox.add(ebox)
+			ebox.show_all()
 
 			return True
 
 
+	def edit_account( self, name, secret ):
+		"""
+			Edit and account and update the UI
+		"""
+		try:
+			otp_code = str(get_totp_token(secret)).zfill(6)
+		except TypeError:
+			return False
+		else:
+			if name != self.selected_account_name and name not in self.accounts:
+				self.accounts[name] = secret
+				del self.accounts[self.selected_account_name]
+				self.update_otps(None)
+
+			return True
+
+
+	def remove_account( self, menuitem, eventbutton ):
+		"""
+			Remove account by name and reload UI
+		"""
+		if self.selected_account_name in self.accounts:
+			del self.accounts[self.selected_account_name]
+			self.selected_account_name = None
+			self.update_otps(None)
+			self.save()
+
+
 	def update_otps( self, user_data ):
+		"""
+			Remove all accounts' UI elements and reload with new OTPs
+		"""
 		for child in self.listbox.get_children():
 			child.destroy()
 		self.load(accountsList=self.accounts)
@@ -155,8 +286,12 @@ class OTPWindow(Gtk.Window):
 
 
 	def update_progress( self, user_data ):
+		"""
+			Decrement the progress bar and start a new timer
+		"""
+		print self.selected_account_name
 		if self.progressbar_reset == True:
-			self.progressbar_fraction = 1
+			self.progressbar_fraction = 1 - (int(time.time())%30)/30.0
 			self.progressbar.set_fraction(self.progressbar_fraction)
 			self.progressbar_reset = False
 		else:
@@ -167,6 +302,7 @@ class OTPWindow(Gtk.Window):
 		GObject.timeout_add(1000 * (runat - time.time()), self.update_progress, None)
 
 		return False  # Don't auto-continue
+
 
 	def save( self ):
 
@@ -210,7 +346,7 @@ class OTPWindow(Gtk.Window):
 
 			self.resize( resWidth, resHeight )
 
-		for name, secret in accountsList.iteritems():
+		for name, secret in sorted(accountsList.iteritems()):
 			self.add_account( name, secret )
 
 
