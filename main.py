@@ -61,7 +61,6 @@ class OTPWindow(Gtk.Window):
 		menuitem_confirm = Gtk.MenuItem("Confirm")
 		submenu.append(menuitem_confirm)
 		menuitem_remove.set_submenu(submenu)
-		self.popup.connect("deactivate", self.popup_deactivate)
 		menuitem_confirm.connect("button-release-event", self.remove_account)
 		menuitem_edit.connect("button-release-event", self.edit_account_dialog)
 		self.popup.show_all()
@@ -95,11 +94,6 @@ class OTPWindow(Gtk.Window):
 
 		self.progressbar_fraction -= (int(time.time())%30)/30.0
 		self.progressbar.set_fraction(self.progressbar_fraction)
-
-
-	def popup_deactivate( self, widget ):
-		""" Helper to null this variable when the popup is closed """
-		self.selected_account_name = None
 
 
 	def show_context_menu( self, widget, event ):
