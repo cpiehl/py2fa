@@ -7,14 +7,6 @@ import gi
 gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk, Gdk, GObject
 
-UI_INFO = """
-<ui>
-  <popup name='ContextMenu'>
-    <menuitem action='ContextRemove' />
-  </popup>
-</ui>
-"""
-
 
 def fullpath( relpath ):
 	return os.path.join(os.path.dirname(__file__), relpath)
@@ -283,7 +275,6 @@ class OTPWindow(Gtk.Window):
 		"""
 			Decrement the progress bar and start a new timer
 		"""
-		print self.selected_account_name
 		if self.progressbar_reset == True:
 			self.progressbar_fraction = 1 - (int(time.time())%30)/30.0
 			self.progressbar.set_fraction(self.progressbar_fraction)
