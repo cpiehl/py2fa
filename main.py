@@ -106,11 +106,13 @@ class OTPWindow(Gtk.Window):
 			secret = secret_entry.get_text().replace(" ", "")
 			if name in self.accounts:
 				self.add_message.set_markup('<span color="red">Unique Name Required</span>')
-			elif self.add_account( name, secret ) == True:
-				self.save()  # Save this new entry
-				dialog.destroy()
 			else:
-				self.add_message.set_markup('<span color="red">Invalid Secret</span>')
+				result = self.add_account( name, secret )
+				if result == True:
+					self.save()  # Save this new entry
+					dialog.destroy()
+				else:
+					self.add_message.set_markup('<span color="red">'+result+'</span>')
 
 
 		def on_cancel_clicked( widget ):
@@ -154,12 +156,14 @@ class OTPWindow(Gtk.Window):
 			secret = secret_entry.get_text().replace(" ", "")
 			if name != self.selected_account_name and name in self.accounts:
 				self.add_message.set_markup('<span color="red">Unique Name Required</span>')
-			elif self.edit_account( name, secret ) == True:
-				self.save()  # Save this new entry
-				dialog.destroy()
-				self.selected_account_name = None
 			else:
-				self.add_message.set_markup('<span color="red">Invalid Secret</span>')
+				result = self.edit_account( name, secret )
+				if result == True:
+					self.save()  # Save this new entry
+					dialog.destroy()
+					self.selected_account_name = None
+				else:
+					self.add_message.set_markup('<span color="red">'+result+'</span>')
 
 
 		def on_cancel_clicked( widget ):
@@ -203,8 +207,8 @@ class OTPWindow(Gtk.Window):
 		"""
 		try:
 			otp_code = str(get_totp_token(secret)).zfill(6)
-		except TypeError:
-			return False
+		except TypeError as e:
+			return str(e)
 		else:
 			if name not in self.accounts:
 				self.accounts[name] = secret
@@ -233,12 +237,12 @@ class OTPWindow(Gtk.Window):
 		"""
 		try:
 			otp_code = str(get_totp_token(secret)).zfill(6)
-		except TypeError:
-			return False
+		except TypeError as e:
+			return str(e)
 		else:
-			if name != self.selected_account_name and name not in self.accounts:
-				self.accounts[name] = secret
+			if name == self.selected_account_name or name not in self.accounts:
 				del self.accounts[self.selected_account_name]
+				self.accounts[name] = secret
 				self.update_otps(None)
 
 			return True
