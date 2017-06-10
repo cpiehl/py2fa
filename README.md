@@ -16,6 +16,8 @@ Use this program to generate two-factor authentication codes for your secured ac
 
 and many other platforms that support two-factor authentication.
 
+Secret keys must be supplied in valid base32 encoding (a 32-character subset of the twenty-six letters A–Z and six digits 2–7).
+
 Dependencies
 ============
 
